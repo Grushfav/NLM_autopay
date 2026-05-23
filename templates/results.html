@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payroll sent – NLM Kitchen</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>Payroll complete</h1>
+    <p class="subtitle">Pay cycle: <strong>{{ pay_cycle }}</strong> · Pay date: <strong>{{ pay_date }}</strong></p>
+
+    {% include '_flash.html' %}
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Net pay</th>
+            <th>YTD</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in results %}
+          <tr>
+            <td>{{ r.name }}</td>
+            <td>{{ r.email }}</td>
+            <td>$ {{ "{:,.2f}".format(r.net_pay) }}</td>
+            <td>$ {{ "{:,.2f}".format(r.ytd) }}</td>
+            <td class="status-{{ r.status }}">{{ r.status }}{% if r.message != 'OK' %} – {{ r.message }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card actions">
+      <a href="{{ url_for('index') }}" class="btn-primary">Start new payroll</a>
+    </div>
+  </div>
+</body>
+</html>

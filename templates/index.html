@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NLM Kitchen – Payslip Automation</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>NLM Kitchen Payslips</h1>
+    <p class="subtitle">Step 1: Upload CSV — the system validates input and prepares payslips for your review.</p>
+    <p class="help" style="margin-top:-1rem;">Server build: <strong>2026-05-22</strong> — if you see errors, run <code>.\start.ps1</code> to restart.</p>
+
+    {% include '_flash.html' %}
+
+    <div class="card">
+      <form method="post" action="{{ url_for('index') }}" enctype="multipart/form-data">
+        <div class="row">
+          <div>
+            <label for="pay_cycle_start">Pay cycle start</label>
+            <input type="text" id="pay_cycle_start" name="pay_cycle_start"
+                   value="{{ pay_cycle_start }}" placeholder="October 26, 2025" required>
+          </div>
+          <div>
+            <label for="pay_cycle_end">Pay cycle end</label>
+            <input type="text" id="pay_cycle_end" name="pay_cycle_end"
+                   value="{{ pay_cycle_end }}" placeholder="November 8, 2025" required>
+          </div>
+        </div>
+
+        <label for="pay_date">Pay date</label>
+        <input type="text" id="pay_date" name="pay_date"
+               value="{{ pay_date }}" placeholder="November 14, 2025" required>
+
+        <label for="csv_file">Employee CSV</label>
+        <input type="file" id="csv_file" name="csv_file" accept=".csv" required>
+
+        <button type="submit">Validate &amp; prepare</button>
+        <a href="/?test_gmail=1" class="btn-secondary" style="margin-left:0.75rem;">Test Gmail login</a>
+        <p class="help">
+          Required columns: <code>Name, TRN, NIS, Rate, Hours, Allowance, Email</code>.
+          Optional: <code>YTD</code>.
+        </p>
+      </form>
+    </div>
+
+    <div class="steps card">
+      <h2>How it works</h2>
+      <ol>
+        <li><strong>Upload</strong> — CSV is read and every row is validated.</li>
+        <li><strong>Review</strong> — See calculated regular pay, overtime, net pay, and YTD before sending.</li>
+        <li><strong>Confirm</strong> — Approve to email PDF payslips and update YTD history.</li>
+      </ol>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/ytd_history.json
+uploads/
+uploads/batches/
+*.pdf
+.DS_Store

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review payroll – NLM Kitchen</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="container wide">
+    <h1>Review prepared payroll</h1>
+    <p class="subtitle">Step 2: Confirm calculations before emails are sent.</p>
+
+    {% include '_flash.html' %}
+
+    <div class="card summary">
+      <div class="summary-grid">
+        <div><span class="label">File</span><strong>{{ report.filename }}</strong></div>
+        <div><span class="label">Pay cycle</span><strong>{{ pay_cycle }}</strong></div>
+        <div><span class="label">Pay date</span><strong>{{ pay_date }}</strong></div>
+        <div><span class="label">Rows in file</span><strong>{{ report.total_rows }}</strong></div>
+        <div><span class="label">Valid</span><strong class="ok">{{ report.valid_count }}</strong></div>
+        <div><span class="label">Errors</span><strong class="{% if report.error_count %}bad{% endif %}">{{ report.error_count }}</strong></div>
+        {% if prepared %}
+        <div><span class="label">Total net pay</span><strong>$ {{ "{:,.2f}".format(total_net) }}</strong></div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if report.errors %}
+    <div class="card">
+      <h2>Validation errors (will not be sent)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Row</th>
+              <th>Name</th>
+              <th>Issue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in report.errors %}
+            <tr class="row-error">
+              <td>{{ e.row_number }}</td>
+              <td>{{ e.raw_name }}</td>
+              <td>{{ e.message }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="help">Fix these rows in your CSV and upload again, or send only the valid rows below.</p>
+    </div>
+    {% endif %}
+
+    {% if prepared %}
+    <div class="card">
+      <h2>Prepared payslips (ready to send)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Row</th>
+              <th>Name</th>
+              <th>Hours</th>
+              <th>Rate</th>
+              <th>Regular</th>
+              <th>OT hrs</th>
+              <th>OT pay</th>
+              <th>Allowance</th>
+              <th>Net pay</th>
+              <th>YTD</th>
+              <th>Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in prepared %}
+            <tr>
+              <td>{{ p.row_number }}</td>
+              <td>{{ p.name }}</td>
+              <td>{{ "%g"|format(p.hours) }}</td>
+              <td>$ {{ "{:,.2f}".format(p.rate) }}</td>
+              <td>{{ p.regular_amount_fmt }} <span class="muted">({{ "%g"|format(p.regular_units) }} hrs)</span></td>
+              <td>{% if p.overtime_units %}{{ "%g"|format(p.overtime_units) }}{% else %}—{% endif %}</td>
+              <td>{{ p.overtime_amount_fmt }}</td>
+              <td>{{ p.allowance_fmt }}</td>
+              <td><strong>{{ p.net_pay_fmt }}</strong></td>
+              <td title="{{ p.ytd_source }}">{{ p.ytd_fmt }}</td>
+              <td>{{ p.email }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card actions">
+      <form method="post" action="/send" class="inline-form">
+        <input type="hidden" name="batch_id" value="{{ batch_id }}">
+        <button type="submit" class="btn-primary">Confirm &amp; send {{ prepared|length }} email(s)</button>
+      </form>
+      <a href="/cancel?batch_id={{ batch_id }}" class="btn-secondary">Cancel &amp; upload again</a>
+    </div>
+    {% else %}
+    <div class="card actions">
+      <a href="/" class="btn-primary">Back to upload</a>
+    </div>
+    {% endif %}
+  </div>
+</body>
+</html>

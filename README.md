@@ -1,8 +1,99 @@
-# NLM_autopay
+# NLM Kitchen – Payslip Automation
 
-Modular payroll automation: CSV intake, overtime calculation, PDF payslips, email delivery, and append-only transaction logging.
+Upload a CSV of employee hours; the system calculates regular pay, overtime, net pay, and year-to-date totals, generates PDF payslips, and emails them.
 
-## Architecture
+This repository includes:
+
+- **Web UI** (`app.py`, `run.py`) — Flask upload → review → send workflow
+- **CLI** (`main.py`, `nlm_autopay/`) — batch/single processing with multiple email providers
+
+## Pay rules
+
+| Line | Calculation |
+|------|-------------|
+| Regular hours | `min(Hours, 80)` × Rate |
+| Overtime | `(Hours − 80) × Rate × 1.5` when Hours > 80 |
+| Net pay | Regular + Overtime + Allowance |
+
+## Setup
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS/Linux
+pip install -r requirements.txt
+copy .env.example .env          # Windows
+# cp .env.example .env          # macOS/Linux
+```
+
+### Web UI (Gmail App Password)
+
+Edit `.env` with your Gmail address and an **App Password** (not your normal Gmail password):
+
+1. Turn on [2-Step Verification](https://myaccount.google.com/signinoptions/two-step-verification).
+2. Create an App Password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+3. Set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `EMAIL_FROM` in `.env`.
+
+Place your company logo at `static/logo.png` (optional; text fallback is used otherwise).
+
+### CLI (optional providers)
+
+The CLI reads additional variables: `NLM_EMAIL_PROVIDER` (`console`, `sendgrid`, `outlook`, `gmail`), overtime settings, `NLM_OUTPUT_DIR`, `NLM_LOGO_PATH` (default `assets/nlm_logo.png`), and provider-specific keys. See `.env` / modular package docs.
+
+## Run the web UI
+
+```bash
+.venv\Scripts\activate
+python run.py
+```
+
+Open **http://127.0.0.1:5050** (change with `PORT` in `.env`).
+
+1. **Upload** — CSV is validated row by row.
+2. **Review** — See regular pay, overtime, net pay, YTD, and any row errors.
+3. **Confirm & send** — Emails PDF payslips and updates YTD history.
+
+Use **Preview only** to validate calculations without sending email or updating YTD history.
+
+## Run the CLI
+
+**Batch — PDF only:**
+
+```bash
+python main.py --csv employees.csv --no-email
+```
+
+**Batch — with email:**
+
+```bash
+python main.py --csv employees.csv
+```
+
+**Single employee:**
+
+```bash
+python main.py --csv employees.csv --mode single --employee "Alice Johnson"
+```
+
+**Dry-run email:**
+
+```bash
+python main.py --csv employees.csv --dry-run-email
+```
+
+## CSV format
+
+**Web UI** — required: `Name`, `TRN`, `NIS`, `Rate`, `Hours`, `Allowance`, `Email`. Optional `YTD` overrides displayed year-to-date.
+
+**CLI** — required: `Name`, `Email`, `Rate`, `Hours`, `Allowance`, `Period`.
+
+See `samples/employees_sample.csv` for web UI examples.
+
+## YTD tracking (web UI)
+
+After each successful email, net pay is added to `data/ytd_history.json` keyed by TRN.
+
+## Architecture (CLI package)
 
 ```
 CSV Upload          Payroll Logic         PDF Output
@@ -15,130 +106,7 @@ CSV Upload          Payroll Logic         PDF Output
                     Transaction Log (persistence/)
 ```
 
-
-| Layer         | Module                                       | Responsibility                    |
-| ------------- | -------------------------------------------- | --------------------------------- |
-| Input         | `nlm_autopay/input/csv_parser.py`            | Parse & validate employee CSV     |
-| Business      | `nlm_autopay/business/payroll.py`            | Gross/net with overtime rules     |
-| Output        | `nlm_autopay/output/payslip.py`              | PDF payslip generation            |
-| Integration   | `nlm_autopay/integration/email_sender.py`    | SendGrid, Outlook, Gmail, console |
-| Persistence   | `nlm_autopay/persistence/transaction_log.py` | Append-only CSV or SQLite log     |
-| Orchestration | `nlm_autopay/service.py`, `main.py`          | End-to-end workflow               |
-
-
-## Payroll rules
-
-- **Regular pay**: `Rate × min(Hours, threshold)` (default threshold: 80)
-- **Overtime pay**: `(Hours − threshold) × Rate × multiplier` when hours exceed threshold (default multiplier: 1.5)
-- **Gross pay**: regular + overtime
-- **Net pay**: gross + allowance
-
-## Setup
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS/Linux
-pip install -r requirements.txt
-cp .env.example .env            # optional: configure email & paths
-```
-
-## CSV format
-
-Required columns (header row):
-
-
-| Column    | Description                       |
-| --------- | --------------------------------- |
-| Name      | Employee full name                |
-| Email     | Valid email address               |
-| Rate      | Hourly rate (numeric)             |
-| Hours     | Hours worked (numeric)            |
-| Allowance | Fixed allowance (numeric)         |
-| Period    | Pay period label (e.g. `2026-04`) |
-
-
-Incomplete or invalid rows are skipped with warnings; processing continues for valid rows.
-
-## Usage
-
-**Batch — all employees, PDF only (no email):**
-
-```bash
-python main.py --csv employees.csv --no-email
-```
-
-**Batch — with email (configure provider in `.env`):**
-
-```bash
-python main.py --csv employees.csv
-```
-
-**Single employee (by name or email):**
-
-```bash
-python main.py --csv employees.csv --mode single --employee "Alice Johnson"
-```
-
-**Dry-run email (log only, no send):**
-
-```bash
-python main.py --csv employees.csv --dry-run-email
-```
-
-**Verbose logging:**
-
-```bash
-python main.py --csv employees.csv -v
-```
-
-## Configuration
-
-Environment variables (see `.env.example`):
-
-
-| Variable                  | Default           | Description                               |
-| ------------------------- | ----------------- | ----------------------------------------- |
-| `NLM_OVERTIME_THRESHOLD`  | `80`              | Hours before overtime applies             |
-| `NLM_OVERTIME_MULTIPLIER` | `1.5`             | Overtime rate multiplier                  |
-| `NLM_OUTPUT_DIR`          | `output`          | PDF output directory                      |
-| `NLM_LOGO_PATH`           | `assets/nlm_logo.png` | Company logo on payslip PDFs (omit file to skip) |
-| `NLM_LOG_BACKEND`         | `csv`             | `csv` or `sqlite`                         |
-| `NLM_LOG_PATH`            | `payslip_log.csv` | Log file path                             |
-| `NLM_EMAIL_PROVIDER`      | `console`         | `console`, `sendgrid`, `outlook`, `gmail` |
-
-
-### Email providers
-
-- **console** — Development default; logs intended sends without network calls.
-- **sendgrid** — Set `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL`.
-- **outlook** — Microsoft Graph with `OUTLOOK_CLIENT_ID`, `OUTLOOK_CLIENT_SECRET`, `OUTLOOK_TENANT_ID`, `OUTLOOK_FROM_EMAIL`.
-- **gmail** — OAuth2 via `credentials.json` from Google Cloud Console; token saved to `token.json` on first run.
-
-## Transaction log
-
-Each run appends one row per processed employee:
-
-`timestamp`, `name`, `email`, `period`, `gross_pay`, `net_pay`, `pdf_filename`, `status`
-
-Statuses: `pdf_generated`, `sent`, `email_failed`.
-
-Logs are append-only (no updates/deletes) for audit integrity.
-
-## Security notes
+## Security
 
 - Do not commit `.env`, `credentials.json`, or `token.json`.
-- Use OAuth2 / API keys via environment variables, not hard-coded secrets.
 - Employee CSV may contain PII; restrict file permissions and secure log storage.
-
-## Extensibility
-
-The layered design supports future modules without changing the CLI contract:
-
-- Tax deductions: extend `PayrollCalculator` and payslip template
-- Digital signatures: post-process PDFs in `output/`
-- Cloud storage: new integration adapter alongside email senders
-
-## License
-
-Internal use — NLM Autopay.

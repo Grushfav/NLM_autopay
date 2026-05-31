@@ -1,0 +1,4 @@
+Name,TRN,NIS,Rate,Hours,Allowance,Email
+Barbara Grossett,115-430-601,P729003,400,97,3000,barbara@example.com
+Bad Row,,NIS2,400,80,0,not-an-email
+Andrew Lewis,117246905,B880820,5000,80,150000,andrew@example.com

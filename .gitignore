@@ -1,9 +1,13 @@
+.env
 __pycache__/
 *.py[cod]
-.env
+*.pyc
 .venv/
 venv/
 output/
+data/ytd_history.json
+uploads/
+uploads/batches/
 *.pdf
 payslip_log.csv
 *.sqlite

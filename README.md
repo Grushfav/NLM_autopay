@@ -9,11 +9,16 @@ This repository includes:
 
 ## Pay rules
 
+**Payroll sheet CSV (web UI):**
+
 | Line | Calculation |
 |------|-------------|
-| Regular hours | `min(Hours, 80)` × Rate |
-| Overtime | `(Hours − 80) × Rate × 1.5` when Hours > 80 |
-| Net pay | Regular + Overtime + Allowance |
+| Regular pay | `Regular hours` × `Base Pay` |
+| Overtime | `OT Hours` × `OT Rate` (when provided) |
+| Incentive | Added to net pay |
+| Net pay | Sum above, or period total column from spreadsheet when present |
+
+**Legacy CSV / CLI:** `min(Hours, 80) × Rate` plus overtime at 1.5× rate when hours exceed 80.
 
 ## Setup
 
@@ -34,7 +39,7 @@ Edit `.env` with your Gmail address and an **App Password** (not your normal Gma
 2. Create an App Password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
 3. Set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `EMAIL_FROM` in `.env`.
 
-Place your company logo at `static/logo.png` (optional; text fallback is used otherwise).
+Place your company logo at `assets/nlm_logo.png` (also used as `static/logo.png` for the web UI). Override with `NLM_LOGO_PATH` in `.env`. Text fallback is used if no file is found.
 
 ### CLI (optional providers)
 
@@ -49,11 +54,13 @@ python run.py
 
 Open **http://127.0.0.1:5050** (change with `PORT` in `.env`).
 
-1. **Upload** — CSV is validated row by row.
+1. **Upload** — CSV or `.xlsx` is validated row by row.
 2. **Review** — See regular pay, overtime, net pay, YTD, and any row errors.
 3. **Confirm & send** — Emails PDF payslips and updates YTD history.
 
-Use **Preview only** to validate calculations without sending email or updating YTD history.
+By default, choose **Send all payslip PDFs to one email** so HR receives every PDF in a single message and forwards them to staff. Use per-employee email only with the legacy CSV format.
+
+Upload **CSV** or **Excel (.xlsx)** directly — no need to export first. **Site Total** rows and repeated header rows are skipped automatically.
 
 ## Run the CLI
 
@@ -83,11 +90,13 @@ python main.py --csv employees.csv --dry-run-email
 
 ## CSV format
 
-**Web UI** — required: `Name`, `TRN`, `NIS`, `Rate`, `Hours`, `Allowance`, `Email`. Optional `YTD` overrides displayed year-to-date.
+**Payroll sheet (web UI)** — required: `Employee`, `Site`, `Base Pay`, `Regular hours`. Optional: `OT Rate`, `OT Hours`, `Incentive`, `TRN`, `NIS`, `Email`, `YTD`. An extra column (e.g. pay period total) is used as net pay when present. Extra columns such as `Double hours` are ignored.
 
-**CLI** — required: `Name`, `Email`, `Rate`, `Hours`, `Allowance`, `Period`.
+**Legacy (web UI or CLI)** — required: `Name`, `TRN`, `NIS`, `Rate`, `Hours`, `Allowance`, `Email`. Optional `YTD`.
 
-See `samples/employees_sample.csv` for web UI examples.
+**CLI only** — also supports: `Name`, `Email`, `Rate`, `Hours`, `Allowance`, `Period` via `nlm_autopay/`.
+
+See `samples/payroll_sheet_sample.csv` and `samples/employees_sample.csv`.
 
 ## YTD tracking (web UI)
 

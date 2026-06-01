@@ -20,27 +20,54 @@
           <div>
             <label for="pay_cycle_start">Pay cycle start</label>
             <input type="text" id="pay_cycle_start" name="pay_cycle_start"
-                   value="{{ pay_cycle_start }}" placeholder="October 26, 2025" required>
+                   value="{{ pay_cycle_start }}" placeholder="April 26, 2026" required>
           </div>
           <div>
             <label for="pay_cycle_end">Pay cycle end</label>
             <input type="text" id="pay_cycle_end" name="pay_cycle_end"
-                   value="{{ pay_cycle_end }}" placeholder="November 8, 2025" required>
+                   value="{{ pay_cycle_end }}" placeholder="May 9, 2026" required>
           </div>
         </div>
 
         <label for="pay_date">Pay date</label>
         <input type="text" id="pay_date" name="pay_date"
-               value="{{ pay_date }}" placeholder="November 14, 2025" required>
+               value="{{ pay_date }}" placeholder="May 14, 2026" required>
 
-        <label for="csv_file">Employee CSV</label>
-        <input type="file" id="csv_file" name="csv_file" accept=".csv" required>
+        <label for="payroll_file">Payroll file (CSV or Excel)</label>
+        <input type="file" id="payroll_file" name="payroll_file"
+               accept=".csv,.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" required>
+
+        <fieldset class="delivery-options">
+          <legend>Email delivery</legend>
+          <label class="radio-row">
+            <input type="radio" name="delivery_mode" value="single"
+                   {% if delivery_mode != 'individual' %}checked{% endif %}
+                   onchange="document.getElementById('delivery_email').required = true">
+            Send all payslip PDFs to one email (you forward to employees)
+          </label>
+          <label for="delivery_email">Delivery email</label>
+          <input type="email" id="delivery_email" name="delivery_email"
+                 value="{{ delivery_email or '' }}"
+                 placeholder="payroll@yourcompany.com"
+                 {% if delivery_mode != 'individual' %}required{% endif %}>
+
+          <label class="radio-row">
+            <input type="radio" name="delivery_mode" value="individual"
+                   {% if delivery_mode == 'individual' %}checked{% endif %}
+                   onchange="document.getElementById('delivery_email').required = false">
+            Send each payslip to the employee email in the CSV (legacy format)
+          </label>
+        </fieldset>
 
         <button type="submit">Validate &amp; prepare</button>
         <a href="/?test_gmail=1" class="btn-secondary" style="margin-left:0.75rem;">Test Gmail login</a>
         <p class="help">
-          Required columns: <code>Name, TRN, NIS, Rate, Hours, Allowance, Email</code>.
-          Optional: <code>YTD</code>.
+          <strong>Payroll sheet CSV:</strong>
+          <code>Employee, Site, Base Pay, Regular hours</code>
+          — optional <code>OT Rate, OT Hours, Incentive</code> and a period total column.
+          Site Total rows are skipped.<br>
+          <strong>Legacy CSV:</strong>
+          <code>Name, TRN, NIS, Rate, Hours, Allowance, Email</code> — optional <code>YTD</code>.
         </p>
       </form>
     </div>
@@ -48,9 +75,9 @@
     <div class="steps card">
       <h2>How it works</h2>
       <ol>
-        <li><strong>Upload</strong> — CSV is read and every row is validated.</li>
-        <li><strong>Review</strong> — See calculated regular pay, overtime, net pay, and YTD before sending.</li>
-        <li><strong>Confirm</strong> — Approve to email PDF payslips and update YTD history.</li>
+        <li><strong>Upload</strong> — CSV or Excel (.xlsx) is read and every employee row is validated.</li>
+        <li><strong>Review</strong> — See regular pay, overtime, incentive, net pay, and YTD.</li>
+        <li><strong>Confirm</strong> — Email payslip PDFs to your delivery address or each employee.</li>
       </ol>
     </div>
   </div>

@@ -20,18 +20,18 @@ class YtdTracker:
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2)
 
-    def _key(self, trn: str) -> str:
-        return str(trn).strip()
+    def _key(self, key: str) -> str:
+        return str(key).strip()
 
-    def stored_ytd(self, trn: str) -> float:
-        entry = self._data.get(self._key(trn), {})
+    def stored_ytd(self, key: str) -> float:
+        entry = self._data.get(self._key(key), {})
         return float(entry.get("ytd", 0.0))
 
-    def resolve_ytd(self, trn: str, net_pay: float, csv_ytd: float | None) -> float:
+    def resolve_ytd(self, key: str, net_pay: float, csv_ytd: float | None) -> float:
         if csv_ytd is not None:
             return csv_ytd
-        return self.stored_ytd(trn) + net_pay
+        return self.stored_ytd(key) + net_pay
 
-    def record(self, trn: str, name: str, ytd_after: float) -> None:
-        self._data[self._key(trn)] = {"name": name, "ytd": ytd_after}
+    def record(self, key: str, name: str, ytd_after: float) -> None:
+        self._data[self._key(key)] = {"name": name, "ytd": ytd_after}
         self._save()

@@ -11,6 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 from src.batch_store import delete_batch, load_batch, save_batch
+from src.csv_formats import SUPPORTED_EXTENSIONS, is_supported_payroll_file
 from src.email_service import EmailConfigError, verify_smtp_login
 from src.pipeline import send_prepared_batch
 from src.validator import prepared_to_display, validate_and_prepare
@@ -63,7 +64,12 @@ def index():
                 flash(f"Gmail login OK for {user}. You can send payslips.", "success")
             except EmailConfigError as exc:
                 flash(str(exc), "error")
-        return render_template("index.html", **_form_defaults())
+        return render_template(
+            "index.html",
+            **_form_defaults(),
+            delivery_mode="single",
+            delivery_email="",
+        )
     return _prepare_payroll()
 
 
@@ -79,17 +85,29 @@ def _prepare_payroll():
     pay_date = request.form.get("pay_date", "").strip()
     pay_cycle = f"{pay_cycle_start} - {pay_cycle_end}"
 
-    upload = request.files.get("csv_file")
+    upload = request.files.get("payroll_file") or request.files.get("csv_file")
     if not upload or not upload.filename:
-        flash("Please upload a CSV file.", "error")
-        return render_template("index.html", **defaults)
+        flash("Please upload a payroll file (CSV or Excel).", "error")
+        return render_template(
+            "index.html",
+            **defaults,
+            delivery_mode=request.form.get("delivery_mode", "single"),
+            delivery_email=request.form.get("delivery_email", ""),
+        )
 
-    if not upload.filename.lower().endswith(".csv"):
-        flash("File must be a .csv file.", "error")
-        return render_template("index.html", **defaults)
+    if not is_supported_payroll_file(upload.filename):
+        allowed = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+        flash(f"File must be one of: {allowed}", "error")
+        return render_template(
+            "index.html",
+            **defaults,
+            delivery_mode=request.form.get("delivery_mode", "single"),
+            delivery_email=request.form.get("delivery_email", ""),
+        )
 
     batch_id = str(uuid.uuid4())
-    csv_path = UPLOAD_DIR / f"{batch_id}.csv"
+    ext = Path(upload.filename).suffix.lower()
+    csv_path = UPLOAD_DIR / f"{batch_id}{ext}"
     upload.save(csv_path)
 
     try:
@@ -98,7 +116,12 @@ def _prepare_payroll():
         csv_path.unlink(missing_ok=True)
         logger.exception("Validation failed")
         flash(f"Could not read CSV: {exc}", "error")
-        return render_template("index.html", **defaults)
+        return render_template(
+            "index.html",
+            **defaults,
+            delivery_mode=request.form.get("delivery_mode", "single"),
+            delivery_email=request.form.get("delivery_email", ""),
+        )
 
     if report.missing_columns:
         csv_path.unlink(missing_ok=True)
@@ -106,7 +129,12 @@ def _prepare_payroll():
             f"CSV is missing required columns: {', '.join(report.missing_columns)}",
             "error",
         )
-        return render_template("index.html", **defaults)
+        return render_template(
+            "index.html",
+            **defaults,
+            delivery_mode=request.form.get("delivery_mode", "single"),
+            delivery_email=request.form.get("delivery_email", ""),
+        )
 
     if not report.prepared:
         csv_path.unlink(missing_ok=True)
@@ -123,11 +151,25 @@ def _prepare_payroll():
             total_net=0,
         )
 
+    delivery_email = ""
+    if request.form.get("delivery_mode") == "single":
+        delivery_email = request.form.get("delivery_email", "").strip()
+        if not delivery_email or "@" not in delivery_email:
+            csv_path.unlink(missing_ok=True)
+            flash("Enter a valid delivery email address for bulk send.", "error")
+            return render_template(
+                "index.html",
+                **defaults,
+                delivery_mode="single",
+                delivery_email=delivery_email,
+            )
+
     stored_batch_id = save_batch(
         report,
         pay_cycle=pay_cycle,
         pay_date=pay_date,
         csv_path=csv_path,
+        delivery_email=delivery_email,
     )
 
     prepared = [prepared_to_display(e) for e in report.prepared]
@@ -152,6 +194,7 @@ def _prepare_payroll():
         pay_cycle_start=pay_cycle_start,
         pay_cycle_end=pay_cycle_end,
         total_net=total_net,
+        delivery_email=delivery_email,
     )
 
 
@@ -188,8 +231,14 @@ def send():
     sent = sum(1 for r in results if r.status == "sent")
     errors = sum(1 for r in results if r.status == "error")
 
+    delivery = (batch.get("delivery_email") or "").strip()
     if errors:
         flash(f"Sent {sent} payslip(s). {errors} failed — see results.", "warning")
+    elif delivery:
+        flash(
+            f"Successfully emailed {sent} payslip PDF(s) to {delivery}.",
+            "success",
+        )
     else:
         flash(f"Successfully emailed {sent} payslip(s).", "success")
 
@@ -206,8 +255,8 @@ def cancel():
     batch_id = request.args.get("batch_id", "")
     if batch_id:
         delete_batch(batch_id)
-        batch_file = UPLOAD_DIR / f"{batch_id}.csv"
-        batch_file.unlink(missing_ok=True)
+        for batch_file in UPLOAD_DIR.glob(f"{batch_id}.*"):
+            batch_file.unlink(missing_ok=True)
     flash("Upload cancelled.", "success")
     return redirect(url_for("index"))
 

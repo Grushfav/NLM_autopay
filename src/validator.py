@@ -1,10 +1,14 @@
 import logging
 from dataclasses import dataclass, field
 
-import pandas as pd
-
-from src.calculator import PayBreakdown, calculate_pay, format_jmd
-from src.csv_processor import REQUIRED_COLUMNS, EmployeeRow, _normalize_columns, _parse_optional_ytd
+from src.calculator import PayBreakdown, format_jmd
+from src.csv_formats import (
+    detect_format,
+    load_dataframe,
+    parse_legacy_row,
+    parse_payroll_sheet_row,
+    required_columns_for_format,
+)
 from src.ytd import YtdTracker
 
 logger = logging.getLogger(__name__)
@@ -21,22 +25,22 @@ class RowError:
 class PreparedEmployee:
     row_number: int
     name: str
+    site: str
     trn: str
     nis: str
     email: str
-    rate: float
-    hours: float
-    allowance: float
     pay: PayBreakdown
     ytd: float
     ytd_source: str
     stored_ytd_before: float
+    ytd_key: str
 
 
 @dataclass
 class ValidationReport:
     filename: str
     columns: list[str]
+    format: str
     missing_columns: list[str]
     prepared: list[PreparedEmployee] = field(default_factory=list)
     errors: list[RowError] = field(default_factory=list)
@@ -55,102 +59,78 @@ class ValidationReport:
         return self.valid_count > 0 and not self.missing_columns
 
 
-def _try_parse_row(row: pd.Series, row_number: int) -> tuple[EmployeeRow | None, str | None]:
-    try:
-        name = str(row.get("Name", "")).strip()
-        trn = str(row.get("TRN", "")).strip()
-        nis = str(row.get("NIS", "")).strip()
-        email = str(row.get("Email", "")).strip()
-        rate = float(row["Rate"])
-        hours = float(row["Hours"])
-        allowance = float(row.get("Allowance", 0) or 0)
-        ytd_override = _parse_optional_ytd(row.get("YTD"))
-
-        if not name:
-            raise ValueError("Name is empty")
-        if not trn:
-            raise ValueError("TRN is empty")
-        if not nis:
-            raise ValueError("NIS is empty")
-        if not email or "@" not in email:
-            raise ValueError("Invalid email address")
-        if rate < 0:
-            raise ValueError("Rate must be zero or positive")
-        if hours < 0:
-            raise ValueError("Hours must be zero or positive")
-        if allowance < 0:
-            raise ValueError("Allowance must be zero or positive")
-
-        return (
-            EmployeeRow(
-                name=name,
-                trn=trn,
-                nis=nis,
-                rate=rate,
-                hours=hours,
-                allowance=allowance,
-                email=email,
-                ytd_override=ytd_override,
-                row_number=row_number,
-            ),
-            None,
-        )
-    except Exception as exc:
-        return None, str(exc)
-
-
 def validate_and_prepare(file_path: str, filename: str) -> ValidationReport:
-    df = pd.read_csv(file_path)
-    df = _normalize_columns(df)
+    df = load_dataframe(file_path)
     columns = list(df.columns)
-    missing = [c for c in REQUIRED_COLUMNS if c not in columns]
+    fmt = detect_format(columns)
+    missing = [
+        c
+        for c in required_columns_for_format(fmt)
+        if c.strip().lower() not in {x.strip().lower() for x in columns}
+    ]
 
     report = ValidationReport(
         filename=filename,
         columns=columns,
+        format=fmt,
         missing_columns=missing,
         total_rows=len(df),
     )
 
-    if missing:
+    if missing or fmt == "unknown":
+        if fmt == "unknown" and not missing:
+            report.missing_columns = [
+                "Employee, Site, Base Pay, Regular hours (payroll sheet) "
+                "or Name, TRN, NIS, Rate, Hours, Allowance, Email (legacy)"
+            ]
         return report
 
+    col_map = {c.strip().lower(): c for c in columns}
     tracker = YtdTracker()
 
     for idx, row in df.iterrows():
         row_number = int(idx) + 2
-        raw_name = str(row.get("Name", "")).strip() or f"Row {row_number}"
+        raw_name = str(row.get(col_map.get("employee", col_map.get("name", "")), "")).strip()
+        if not raw_name or raw_name.lower() == "nan":
+            raw_name = f"Row {row_number}"
 
-        emp, err = _try_parse_row(row, row_number)
-        if err:
-            report.errors.append(RowError(row_number=row_number, raw_name=raw_name, message=err))
-            continue
+        try:
+            if fmt == "payroll_sheet":
+                parsed = parse_payroll_sheet_row(row, row_number, columns, col_map)
+            else:
+                parsed = parse_legacy_row(row, row_number)
 
-        pay = calculate_pay(emp.rate, emp.hours, emp.allowance)
-        stored = tracker.stored_ytd(emp.trn)
-        if emp.ytd_override is not None:
-            ytd = emp.ytd_override
-            ytd_source = "CSV override"
-        else:
-            ytd = stored + pay.net_pay
-            ytd_source = "Calculated (stored + net)"
+            if parsed is None:
+                continue
 
-        report.prepared.append(
-            PreparedEmployee(
-                row_number=emp.row_number,
-                name=emp.name,
-                trn=emp.trn,
-                nis=emp.nis,
-                email=emp.email,
-                rate=emp.rate,
-                hours=emp.hours,
-                allowance=emp.allowance,
-                pay=pay,
-                ytd=ytd,
-                ytd_source=ytd_source,
-                stored_ytd_before=stored,
+            stored = tracker.stored_ytd(parsed.ytd_key)
+            if parsed.ytd_override is not None:
+                ytd = parsed.ytd_override
+                ytd_source = "CSV override"
+            else:
+                ytd = stored + parsed.pay.net_pay
+                ytd_source = "Calculated (stored + net)"
+
+            report.prepared.append(
+                PreparedEmployee(
+                    row_number=parsed.row_number,
+                    name=parsed.name,
+                    site=parsed.site,
+                    trn=parsed.trn,
+                    nis=parsed.nis,
+                    email=parsed.email,
+                    pay=parsed.pay,
+                    ytd=ytd,
+                    ytd_source=ytd_source,
+                    stored_ytd_before=stored,
+                    ytd_key=parsed.ytd_key,
+                )
             )
-        )
+        except Exception as exc:
+            logger.warning("Row %s: %s", row_number, exc)
+            report.errors.append(
+                RowError(row_number=row_number, raw_name=raw_name, message=str(exc))
+            )
 
     return report
 
@@ -160,11 +140,12 @@ def prepared_to_display(emp: PreparedEmployee) -> dict:
     return {
         "row_number": emp.row_number,
         "name": emp.name,
-        "trn": emp.trn,
-        "nis": emp.nis,
-        "email": emp.email,
-        "rate": emp.rate,
-        "hours": emp.hours,
+        "site": emp.site or "—",
+        "trn": emp.trn or "—",
+        "nis": emp.nis or "—",
+        "email": emp.email or "—",
+        "rate": pay.regular_rate,
+        "hours": pay.regular_units,
         "regular_units": pay.regular_units,
         "regular_amount": pay.regular_amount,
         "regular_amount_fmt": format_jmd(pay.regular_amount),
@@ -172,8 +153,8 @@ def prepared_to_display(emp: PreparedEmployee) -> dict:
         "overtime_rate": pay.overtime_rate,
         "overtime_amount": pay.overtime_amount,
         "overtime_amount_fmt": format_jmd(pay.overtime_amount) if pay.overtime_units else "—",
-        "allowance": emp.allowance,
-        "allowance_fmt": format_jmd(emp.allowance),
+        "allowance": pay.allowance,
+        "allowance_fmt": format_jmd(pay.allowance) if pay.allowance else "—",
         "net_pay": pay.net_pay,
         "net_pay_fmt": format_jmd(pay.net_pay),
         "ytd": emp.ytd,

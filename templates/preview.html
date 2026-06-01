@@ -16,6 +16,7 @@
     <div class="card summary">
       <div class="summary-grid">
         <div><span class="label">File</span><strong>{{ report.filename }}</strong></div>
+        <div><span class="label">Format</span><strong>{{ report.format }}</strong></div>
         <div><span class="label">Pay cycle</span><strong>{{ pay_cycle }}</strong></div>
         <div><span class="label">Pay date</span><strong>{{ pay_date }}</strong></div>
         <div><span class="label">Rows in file</span><strong>{{ report.total_rows }}</strong></div>
@@ -23,6 +24,9 @@
         <div><span class="label">Errors</span><strong class="{% if report.error_count %}bad{% endif %}">{{ report.error_count }}</strong></div>
         {% if prepared %}
         <div><span class="label">Total net pay</span><strong>$ {{ "{:,.2f}".format(total_net) }}</strong></div>
+        {% endif %}
+        {% if delivery_email %}
+        <div><span class="label">Delivery email</span><strong>{{ delivery_email }}</strong></div>
         {% endif %}
       </div>
     </div>
@@ -63,15 +67,16 @@
             <tr>
               <th>Row</th>
               <th>Name</th>
-              <th>Hours</th>
-              <th>Rate</th>
+              <th>Site</th>
+              <th>Reg. hrs</th>
+              <th>Base pay</th>
               <th>Regular</th>
               <th>OT hrs</th>
               <th>OT pay</th>
-              <th>Allowance</th>
+              <th>Incentive</th>
               <th>Net pay</th>
               <th>YTD</th>
-              <th>Email</th>
+              {% if not delivery_email %}<th>Email</th>{% endif %}
             </tr>
           </thead>
           <tbody>
@@ -79,15 +84,16 @@
             <tr>
               <td>{{ p.row_number }}</td>
               <td>{{ p.name }}</td>
-              <td>{{ "%g"|format(p.hours) }}</td>
+              <td>{{ p.site }}</td>
+              <td>{{ "%g"|format(p.regular_units) }}</td>
               <td>$ {{ "{:,.2f}".format(p.rate) }}</td>
-              <td>{{ p.regular_amount_fmt }} <span class="muted">({{ "%g"|format(p.regular_units) }} hrs)</span></td>
+              <td>{{ p.regular_amount_fmt }}</td>
               <td>{% if p.overtime_units %}{{ "%g"|format(p.overtime_units) }}{% else %}—{% endif %}</td>
               <td>{{ p.overtime_amount_fmt }}</td>
               <td>{{ p.allowance_fmt }}</td>
               <td><strong>{{ p.net_pay_fmt }}</strong></td>
               <td title="{{ p.ytd_source }}">{{ p.ytd_fmt }}</td>
-              <td>{{ p.email }}</td>
+              {% if not delivery_email %}<td>{{ p.email }}</td>{% endif %}
             </tr>
             {% endfor %}
           </tbody>
@@ -98,7 +104,13 @@
     <div class="card actions">
       <form method="post" action="/send" class="inline-form">
         <input type="hidden" name="batch_id" value="{{ batch_id }}">
+        {% if delivery_email %}
+        <button type="submit" class="btn-primary">
+          Confirm &amp; send {{ prepared|length }} PDF(s) to {{ delivery_email }}
+        </button>
+        {% else %}
         <button type="submit" class="btn-primary">Confirm &amp; send {{ prepared|length }} email(s)</button>
+        {% endif %}
       </form>
       <a href="/cancel?batch_id={{ batch_id }}" class="btn-secondary">Cancel &amp; upload again</a>
     </div>
